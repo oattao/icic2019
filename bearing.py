@@ -4,9 +4,10 @@ import time
 import copy
 import pickle
 
-from fcn import aCNN, fCNN
+from fcn import CNN
 
 import numpy as np
+import pandas as pd
 
 import torch
 import torch.nn as nn
@@ -17,6 +18,16 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import datasets, transforms
 
 # function
+def write_csv(file_name,data):
+	if os.path.isfile(file_name):
+		df = pd.read_csv(file_name)
+	else:
+		df = pd.DataFrame()
+	for key in data.keys():
+		column = key
+		df[column] = data[key]
+		df.to_csv(file_name,index=False)
+
 def split_data(dataset,train_portion,val_portion):
 	"""Split data by train, validation, test set"""
 	num_total = len(dataset)
@@ -42,10 +53,10 @@ def split_data(dataset,train_portion,val_portion):
 # parameter
 idx_save = 'idx.pickle'
 datasplit = ['train','val','test']
-num_epoch = 200
+num_epoch = 50
 
 # prepare data
-data_dir = '/media/oattao/Oh/MPaper/conference/icic2019/code/bearing_img'
+data_dir = '/media/oattao/Oh/MPaper/conference/icic2019/code/gearbox_img'
 data_transform = transforms.Compose([transforms.ToTensor(),
 									 transforms.Normalize([0.5,0.5,0.5],
 														  [0.5,0.5,0.5])])
@@ -75,21 +86,21 @@ device = 'cuda:0'
 class_name = image_dataset.classes
 num_class = len(class_name)
 
-net = aCNN(output_size = num_class)
+net = CNN(output_size = num_class)
 print(num_class)
 net.to(device)
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(),lr=0.001,momentum=0.9)
+optimizer = optim.SGD(net.parameters(),lr=0.01,momentum=0.9)
 exp_lr = lr_scheduler.StepLR(optimizer,step_size = 7, gamma = 0.1)
 
-log_acc = {'train': [], 'val': []}
+log_acc = {x: [] for x in datasplit}
 print('Training...')
 best_acc = 0.0
 since = time.time()
 for epoch in range(num_epoch):
-	if (epoch+1)%10 == 0:
+	if (epoch+1)%5 == 0:
 		print('Epoch {}/{}'.format(epoch,num_epoch-1))
-	for phase in ['train','val']:
+	for phase in datasplit:
 		if phase == 'train':
 			exp_lr.step()
 			net.train()
@@ -115,9 +126,18 @@ for epoch in range(num_epoch):
 
 		epoch_loss = running_loss/dataset_size[phase]
 		epoch_acc = running_correct.double()/dataset_size[phase]
+		log_acc[phase].append(round(epoch_acc.item(),2))
 
-		if (epoch+1)%10 == 0:
+		if (epoch+1)%5 == 0:
 			print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase,epoch_loss,epoch_acc))
 		if phase == 'val' and epoch_acc > best_acc:
 			best_acc = epoch_acc
 			best_net = copy.deepcopy(net.state_dict())
+
+print('Training finish.')
+
+save_model = 'cnn_gearbox_model.pth'
+save_log = 'cnn_gearbox_log.csv'
+torch.save(net.state_dict(),save_model)
+
+write_csv(save_log,log_acc)
